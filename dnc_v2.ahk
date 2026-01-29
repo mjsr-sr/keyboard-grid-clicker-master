@@ -11,6 +11,15 @@ InstallKeybdHook
 SetKeyDelay -1
 SetWinDelay 0
 
+; Set DPI awareness for accurate coordinates on high DPI displays
+DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+
+; Configure your physical monitor layout (left to right)
+; Map physical position to Windows monitor number
+; Example: If your monitors are physically arranged as Windows monitors 1-4-2-3 (left to right)
+; Then: A=monitor 1, S=monitor 4, D=monitor 2, F=monitor 3
+MONITOR_LAYOUT := [1, 4, 2, 3]  ; Edit this to match your setup
+
 iniFile := "dnc.ini"
 LoadConfigurationFile()
 CoordMode "Mouse", "Screen"
@@ -106,9 +115,9 @@ setupInitialBoxMonitor(monitorNum)
     bD["sectorWidth"] := (MonitorRight - MonitorLeft)
     bD["sectorHeight"] := (MonitorBottom - MonitorTop)
     
-    MouseGetPos(&currentMouseX, &currentMouseY)
-    bD["newX"] := currentMouseX
-    bD["newY"] := currentMouseY
+    ; Set initial position to center of monitor
+    bD["newX"] := MonitorLeft + Floor(bD["sectorWidth"] / 2)
+    bD["newY"] := MonitorTop + Floor(bD["sectorHeight"] / 2)
     return bD
 }
 
@@ -170,21 +179,35 @@ computeNewBox(currentBox, selection)
     for key, value in currentBox
         newBox[key] := value
     
-    newBox["sectorWidth"] := Floor(newBox["sectorWidth"] / 3)
-    newBox["sectorHeight"] := Floor(newBox["sectorHeight"] / 3)
+    ; Divide the current sector into thirds
+    newWidth := Floor(newBox["sectorWidth"] / 3)
+    newHeight := Floor(newBox["sectorHeight"] / 3)
     
-    if (selection ~= "[cde]")
-        newBox["sectorTopX"] := newBox["sectorTopX"] + newBox["sectorWidth"]
-    if (selection ~= "[vfr]")
-        newBox["sectorTopX"] := newBox["sectorTopX"] + (2 * newBox["sectorWidth"])
+    ; Start with the top-left position of current sector
+    newTopX := newBox["sectorTopX"]
+    newTopY := newBox["sectorTopY"]
     
-    if (selection ~= "[xcv]")
-        newBox["sectorTopY"] := newBox["sectorTopY"] + (2 * newBox["sectorHeight"])
-    if (selection ~= "[sdf]")
-        newBox["sectorTopY"] := newBox["sectorTopY"] + newBox["sectorHeight"]
+    ; Adjust X position based on column (left, center, right)
+    if (selection ~= "[cde]")  ; middle column
+        newTopX := newTopX + newWidth
+    if (selection ~= "[vfr]")  ; right column
+        newTopX := newTopX + (2 * newWidth)
     
-    newBox["newX"] := newBox["sectorTopX"] + Floor(newBox["sectorWidth"] / 2)
-    newBox["newY"] := newBox["sectorTopY"] + Floor(newBox["sectorHeight"] / 2)
+    ; Adjust Y position based on row (top, middle, bottom)
+    if (selection ~= "[sdf]")  ; middle row
+        newTopY := newTopY + newHeight
+    if (selection ~= "[xcv]")  ; bottom row
+        newTopY := newTopY + (2 * newHeight)
+    
+    ; Set the new sector boundaries
+    newBox["sectorTopX"] := newTopX
+    newBox["sectorTopY"] := newTopY
+    newBox["sectorWidth"] := newWidth
+    newBox["sectorHeight"] := newHeight
+    
+    ; Calculate center of the NEW sector
+    newBox["newX"] := newTopX + Floor(newWidth / 2)
+    newBox["newY"] := newTopY + Floor(newHeight / 2)
     
     return newBox
 }
@@ -243,8 +266,8 @@ drawRect(x, y, width, height, winNo)
 {
     global color, transparency, gridGuis
     gridGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "Grid" . winNo)
-    gridGui.BackColor := "666666"
-    WinSetTransColor(color . " " . transparency, gridGui)
+    gridGui.BackColor := color
+    WinSetTransColor("000000 " . transparency, gridGui)
     gridGui.Show("x" . x . " y" . y . " w" . width . " h" . height . " NoActivate")
     gridGuis.Push(gridGui)
 }
@@ -296,49 +319,67 @@ LoadConfigurationFile()
     if !FileExist(iniFile)
     {
         IniWrite("^NumpadMult", iniFile, "Settings", "hotkey")
-        IniWrite("FF3333", iniFile, "Settings", "color")
+        IniWrite("00FF00", iniFile, "Settings", "color")
         IniWrite("70", iniFile, "Settings", "transparency")
     }
     
     hotkey := IniRead(iniFile, "Settings", "hotkey", "^NumpadMult")
-    color := IniRead(iniFile, "Settings", "color", "FF3333")
+    color := IniRead(iniFile, "Settings", "color", "00FF00")
     transparency := IniRead(iniFile, "Settings", "transparency", "70")
 }
 
-; Fixed: removed extra 'd' that was in the v1 code
+; Monitor selection after PgUp: A=1st, S=2nd, D=3rd, F=4th monitor (physical left to right)
+; Uses MONITOR_LAYOUT configuration for mapping
 PgUp::
 {
     BlockInput true
-    resetSharedState()
-    global BackAll
-    currentBox := setupInitialBoxLeft()
-    DrawGrid(currentBox)
-    BackAll.Push(currentBox)
-    MainLoop(currentBox)
+    global MONITOR_LAYOUT
+    
+    ; Show selection prompt
+    ToolTip "Select Monitor (Left to Right):`nA = 1st | S = 2nd`nD = 3rd | F = 4th`nEsc = Cancel"
+    
+    ; Wait for monitor selection
+    ih := InputHook("L1", "{Escape}")
+    ih.Start()
+    ih.Wait()
+    
+    physicalPos := 0
+    
+    if (ih.Input = "a")
+        physicalPos := 1
+    else if (ih.Input = "s")
+        physicalPos := 2
+    else if (ih.Input = "d")
+        physicalPos := 3
+    else if (ih.Input = "f")
+        physicalPos := 4
+    
+    ToolTip  ; Clear tooltip
+    
+    if (physicalPos > 0 && physicalPos <= MONITOR_LAYOUT.Length)
+    {
+        monitorNum := MONITOR_LAYOUT[physicalPos]
+        resetSharedState()
+        global BackAll
+        currentBox := setupInitialBoxMonitor(monitorNum)
+        moveMouseToCellCenter(currentBox)
+        DrawGrid(currentBox)
+        BackAll.Push(currentBox)
+        MainLoop(currentBox)
+    }
+    
     BlockInput false
 }
 
-; Fixed: removed extra 'j' that was in the v1 code
+; PgDn: Activate on current monitor where mouse is located
 PgDn::
-{
-    BlockInput true
-    resetSharedState()
-    global BackAll
-    currentBox := setupInitialBoxRight()
-    DrawGrid(currentBox)
-    BackAll.Push(currentBox)
-    MainLoop(currentBox)
-    BlockInput false
-}
-
-; Activate on current monitor where mouse is located
-^Space::
 {
     BlockInput true
     resetSharedState()
     global BackAll
     currentMonitor := GetMonitorMouse()
     currentBox := setupInitialBoxMonitor(currentMonitor)
+    moveMouseToCellCenter(currentBox)
     DrawGrid(currentBox)
     BackAll.Push(currentBox)
     MainLoop(currentBox)
