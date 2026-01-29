@@ -14,11 +14,7 @@ SetWinDelay 0
 ; Set DPI awareness for accurate coordinates on high DPI displays
 DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
 
-; Configure your physical monitor layout (left to right)
-; Map physical position to Windows monitor number
-; Example: If your monitors are physically arranged as Windows monitors 1-4-2-3 (left to right)
-; Then: A=monitor 1, S=monitor 4, D=monitor 2, F=monitor 3
-MONITOR_LAYOUT := [1, 4, 2, 3]  ; Edit this to match your setup
+; All configuration is in dnc.ini
 
 iniFile := "dnc.ini"
 LoadConfigurationFile()
@@ -152,7 +148,7 @@ main(currentBox, userInput)
             ClickDouble()
         
         if (userInput = "Escape")
-            Quit()
+            CleanUpGui()
         
         if (userInput = "Space")
         {
@@ -314,26 +310,62 @@ ClickDouble()
 
 LoadConfigurationFile()
 {
-    global iniFile, color, transparency
+    global iniFile, color, transparency, MONITOR_LAYOUT
     
     if !FileExist(iniFile)
     {
-        IniWrite("^NumpadMult", iniFile, "Settings", "hotkey")
+        IniWrite("PgDn", iniFile, "Settings", "hotkey_select_monitor")
+        IniWrite("PgUp", iniFile, "Settings", "hotkey_current_monitor")
+        IniWrite("1,4,2,3", iniFile, "Settings", "monitor_layout")
         IniWrite("00FF00", iniFile, "Settings", "color")
         IniWrite("70", iniFile, "Settings", "transparency")
     }
     
-    hotkey := IniRead(iniFile, "Settings", "hotkey", "^NumpadMult")
+    global HOTKEY_SELECT_MONITOR := IniRead(iniFile, "Settings", "hotkey_select_monitor", "PgDn")
+    global HOTKEY_CURRENT_MONITOR := IniRead(iniFile, "Settings", "hotkey_current_monitor", "PgUp")
+    
+    ; Parse monitor layout from comma-separated string
+    layoutStr := IniRead(iniFile, "Settings", "monitor_layout", "1,4,2,3")
+    MONITOR_LAYOUT := []
+    Loop Parse, layoutStr, ","
+    {
+        MONITOR_LAYOUT.Push(Integer(Trim(A_LoopField)))
+    }
+    
     color := IniRead(iniFile, "Settings", "color", "00FF00")
     transparency := IniRead(iniFile, "Settings", "transparency", "70")
 }
 
-; Monitor selection after PgUp: A=1st, S=2nd, D=3rd, F=4th monitor (physical left to right)
-; Uses MONITOR_LAYOUT configuration for mapping
-PgUp::
+; Setup dynamic hotkeys based on configuration
+SetupHotkeys()
+{
+    global HOTKEY_CURRENT_MONITOR, HOTKEY_SELECT_MONITOR
+    
+    ; Hotkey for current monitor
+    Hotkey(HOTKEY_CURRENT_MONITOR, ActivateCurrentMonitor)
+    
+    ; Hotkey for monitor selection
+    Hotkey(HOTKEY_SELECT_MONITOR, ActivateMonitorSelection)
+}
+
+ActivateCurrentMonitor(*)
 {
     BlockInput true
-    global MONITOR_LAYOUT
+    resetSharedState()
+    global BackAll
+    currentMonitor := GetMonitorMouse()
+    currentBox := setupInitialBoxMonitor(currentMonitor)
+    moveMouseToCellCenter(currentBox)
+    DrawGrid(currentBox)
+    BackAll.Push(currentBox)
+    MainLoop(currentBox)
+    BlockInput false
+}
+
+ActivateMonitorSelection(*)
+{
+    BlockInput true
+    global MONITOR_LAYOUT, BackAll
     
     ; Show selection prompt
     ToolTip "Select Monitor (Left to Right):`nA = 1st | S = 2nd`nD = 3rd | F = 4th`nEsc = Cancel"
@@ -360,7 +392,6 @@ PgUp::
     {
         monitorNum := MONITOR_LAYOUT[physicalPos]
         resetSharedState()
-        global BackAll
         currentBox := setupInitialBoxMonitor(monitorNum)
         moveMouseToCellCenter(currentBox)
         DrawGrid(currentBox)
@@ -371,20 +402,8 @@ PgUp::
     BlockInput false
 }
 
-; PgDn: Activate on current monitor where mouse is located
-PgDn::
-{
-    BlockInput true
-    resetSharedState()
-    global BackAll
-    currentMonitor := GetMonitorMouse()
-    currentBox := setupInitialBoxMonitor(currentMonitor)
-    moveMouseToCellCenter(currentBox)
-    DrawGrid(currentBox)
-    BackAll.Push(currentBox)
-    MainLoop(currentBox)
-    BlockInput false
-}
+; Initialize hotkeys
+SetupHotkeys()
 
 MainLoop(currentBox)
 {

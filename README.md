@@ -29,15 +29,41 @@ This tool divides your screen into a 3×3 grid overlay. Select a section, and it
 
 ## Configuration
 
-### Monitor Layout
+All configuration is in the `dnc.ini` file.
 
-If your Windows monitor numbering doesn't match your physical layout, edit the `MONITOR_LAYOUT` setting at the top of `dnc_v2.ahk`:
+### Hotkeys
 
-```ahk
-MONITOR_LAYOUT := [1, 4, 2, 3]  ; Edit to match your setup
+Edit `dnc.ini` to customize activation hotkeys:
+
+```ini
+hotkey_select_monitor=PgDn    ; Show monitor selection menu
+hotkey_current_monitor=PgUp   ; Activate on current monitor
 ```
 
-The array represents your monitors from **left to right** physically. Each number is the Windows monitor number.
+Use AutoHotkey hotkey syntax:
+- `^` = Ctrl (e.g., `^F1` = Ctrl+F1)
+- `!` = Alt (e.g., `!Space` = Alt+Space)
+- `+` = Shift (e.g., `+F12` = Shift+F12)
+- `#` = Win key (e.g., `#m` = Win+M)
+
+Examples:
+- `F1` and `F2` - Simple function keys
+- `^!m` - Ctrl+Alt+M
+- `#Space` - Win+Space
+
+### Monitor Layout
+
+Edit `dnc.ini` to configure your physical monitor arrangement (left to right):
+
+```ini
+monitor_layout=1,4,2,3    ; Windows monitor numbers from left to right
+```
+
+This maps your physical monitor positions to Windows monitor numbers. For example, `1,4,2,3` means:
+- Physical position 1 (leftmost) = Windows monitor #1 → Press **A**
+- Physical position 2 = Windows monitor #4 → Press **S**
+- Physical position 3 = Windows monitor #2 → Press **D**
+- Physical position 4 (rightmost) = Windows monitor #3 → Press **F**
 
 ### Grid Color
 
@@ -58,10 +84,10 @@ Popular colors:
 
 ### Activation
 
-| Hotkey | Action |
-|--------|--------|
-| **PgUp** | Select monitor with A/S/D/F keys (1st/2nd/3rd/4th physical monitor) |
-| **PgDn** | Activate on current monitor (wherever mouse is) |
+| Hotkey | Action | Configurable in dnc.ini |
+|--------|--------|-------------------------|
+| **PgDn** (default) | Select monitor with A/S/D/F keys | `hotkey_select_monitor` |
+| **PgUp** (default) | Activate on current monitor | `hotkey_current_monitor` |
 
 ### Navigation
 
