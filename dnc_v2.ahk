@@ -45,6 +45,31 @@ GetMonitorMouse()
     return 1
 }
 
+GetMonitorActiveWindow()
+{
+    try
+    {
+        WinGetPos(&winX, &winY, &winWidth, &winHeight, "A")
+        ; Use center of window to determine monitor
+        centerX := winX + Floor(winWidth / 2)
+        centerY := winY + Floor(winHeight / 2)
+        
+        monitorCount := MonitorGetCount()
+        
+        Loop monitorCount
+        {
+            MonitorGet(A_Index, &MonitorLeft, &MonitorTop, &MonitorRight, &MonitorBottom)
+            
+            if (centerX >= MonitorLeft && centerX <= MonitorRight && 
+                centerY >= MonitorTop && centerY <= MonitorBottom)
+            {
+                return A_Index
+            }
+        }
+    }
+    return 1  ; Default to primary monitor if window detection fails
+}
+
 resetSharedState()
 {
     global depth, BackAll, gridGuis
@@ -353,7 +378,7 @@ ActivateCurrentMonitor(*)
     BlockInput true
     resetSharedState()
     global BackAll
-    currentMonitor := GetMonitorMouse()
+    currentMonitor := GetMonitorActiveWindow()
     currentBox := setupInitialBoxMonitor(currentMonitor)
     moveMouseToCellCenter(currentBox)
     DrawGrid(currentBox)
