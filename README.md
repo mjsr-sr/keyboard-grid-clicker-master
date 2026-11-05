@@ -89,6 +89,15 @@ Popular colors:
 | **PgDn** (default) | Select monitor with A/S/D/F keys | `hotkey_select_monitor` |
 | **PgUp** (default) | Activate on current monitor | `hotkey_current_monitor` |
 
+After a left, right, or double click, either activation hotkey resumes the last
+clicked cell when the target monitor is the same and the mouse is still at the
+exact click coordinates. The zoom level and navigation history are restored, so
+**Space** still zooms back out. If the mouse position, target monitor, or monitor
+bounds differ, activation starts with the full-monitor grid as usual.
+
+Only the most recent click is remembered, until the script exits or restarts.
+**Escape** cancels without replacing that saved click.
+
 ### Navigation
 
 Once the grid appears:

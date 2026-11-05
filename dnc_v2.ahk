@@ -27,6 +27,8 @@ depth := 0
 BackAll := []
 drawing := false
 gridGuis := []
+activeMonitor := 0
+lastClick := 0
 
 GetMonitorMouse()
 {
@@ -146,14 +148,11 @@ main(currentBox, userInput)
 {
     global depth, MAX_DEPTH, BackAll
     
-    if (depth >= MAX_DEPTH)
-    {
-        CleanUpGui()
-        return currentBox
-    }
-    
     if (userInput ~= "^[xcvsdfwer]$")
     {
+        if (depth >= MAX_DEPTH)
+            return currentBox
+
         currentBox := computeNewBox(currentBox, userInput)
         moveMouseToCellCenter(currentBox)
         DrawGrid(currentBox)
@@ -318,19 +317,60 @@ Quit()
 ClickLeft()
 {
     CleanUpGui()
+    RememberClickedCell()
     Click
 }
 
 ClickRight()
 {
     CleanUpGui()
+    RememberClickedCell()
     Click "Right"
 }
 
 ClickDouble()
 {
     CleanUpGui()
+    RememberClickedCell()
     Click 2
+}
+
+RememberClickedCell()
+{
+    global activeMonitor, BackAll, lastClick
+    MouseGetPos(&x, &y)
+    lastClick := Map("monitor", activeMonitor, "x", x, "y", y,
+        "history", BackAll.Clone())
+}
+
+StartMonitorGrid(monitorNum)
+{
+    global activeMonitor, BackAll, depth, lastClick
+    MouseGetPos(&x, &y)
+    resetSharedState()
+    activeMonitor := monitorNum
+    currentBox := setupInitialBoxMonitor(monitorNum)
+    BackAll.Push(currentBox)
+
+    if (IsObject(lastClick) && lastClick["monitor"] = monitorNum
+        && lastClick["x"] = x && lastClick["y"] = y)
+    {
+        savedRoot := lastClick["history"][1]
+        ; Monitor layout changes invalidate saved cell coordinates.
+        if (savedRoot["sectorTopX"] = currentBox["sectorTopX"]
+            && savedRoot["sectorTopY"] = currentBox["sectorTopY"]
+            && savedRoot["sectorWidth"] = currentBox["sectorWidth"]
+            && savedRoot["sectorHeight"] = currentBox["sectorHeight"])
+        {
+            BackAll := lastClick["history"].Clone()
+            depth := BackAll.Length - 1
+            currentBox := BackAll[BackAll.Length]
+        }
+    }
+
+    moveMouseToCellCenter(currentBox)
+    DrawGrid(currentBox)
+    return currentBox
 }
 
 LoadConfigurationFile()
@@ -376,13 +416,8 @@ SetupHotkeys()
 ActivateCurrentMonitor(*)
 {
     BlockInput true
-    resetSharedState()
-    global BackAll
     currentMonitor := GetMonitorActiveWindow()
-    currentBox := setupInitialBoxMonitor(currentMonitor)
-    moveMouseToCellCenter(currentBox)
-    DrawGrid(currentBox)
-    BackAll.Push(currentBox)
+    currentBox := StartMonitorGrid(currentMonitor)
     MainLoop(currentBox)
     BlockInput false
 }
@@ -390,7 +425,7 @@ ActivateCurrentMonitor(*)
 ActivateMonitorSelection(*)
 {
     BlockInput true
-    global MONITOR_LAYOUT, BackAll
+    global MONITOR_LAYOUT
     
     ; Show selection prompt
     ToolTip "Select Monitor (Left to Right):`nA = 1st | S = 2nd`nD = 3rd | F = 4th`nEsc = Cancel"
@@ -416,11 +451,7 @@ ActivateMonitorSelection(*)
     if (physicalPos > 0 && physicalPos <= MONITOR_LAYOUT.Length)
     {
         monitorNum := MONITOR_LAYOUT[physicalPos]
-        resetSharedState()
-        currentBox := setupInitialBoxMonitor(monitorNum)
-        moveMouseToCellCenter(currentBox)
-        DrawGrid(currentBox)
-        BackAll.Push(currentBox)
+        currentBox := StartMonitorGrid(monitorNum)
         MainLoop(currentBox)
     }
     
