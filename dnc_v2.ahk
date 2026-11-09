@@ -28,6 +28,7 @@ BackAll := []
 drawing := false
 gridGuis := []
 activeMonitor := 0
+activeWindow := 0
 lastClick := 0
 
 GetMonitorMouse()
@@ -144,13 +145,42 @@ setupInitialBoxMonitor(monitorNum)
     return bD
 }
 
+setupInitialBoxWindow(windowId, &monitorNum)
+{
+    WinGetPos(&winX, &winY, &winWidth, &winHeight, windowId)
+    largestArea := 0
+    monitorNum := 0
+    Loop MonitorGetCount()
+    {
+        MonitorGet(A_Index, &left, &top, &right, &bottom)
+        visibleLeft := Max(winX, left)
+        visibleTop := Max(winY, top)
+        visibleWidth := Max(0, Min(winX + winWidth, right) - visibleLeft)
+        visibleHeight := Max(0, Min(winY + winHeight, bottom) - visibleTop)
+        area := visibleWidth * visibleHeight
+        if (area > largestArea)
+        {
+            largestArea := area
+            monitorNum := A_Index
+            box := Map("sectorTopX", visibleLeft, "sectorTopY", visibleTop,
+                "sectorWidth", visibleWidth, "sectorHeight", visibleHeight,
+                "newX", visibleLeft + Floor(visibleWidth / 2),
+                "newY", visibleTop + Floor(visibleHeight / 2))
+        }
+    }
+    if (monitorNum = 0)
+        throw Error("The active window has no visible area on a monitor.")
+    return box
+}
+
 main(currentBox, userInput)
 {
     global depth, MAX_DEPTH, BackAll
     
     if (userInput ~= "^[xcvsdfwer]$")
     {
-        if (depth >= MAX_DEPTH)
+        if (depth >= MAX_DEPTH || currentBox["sectorWidth"] < 3
+            || currentBox["sectorHeight"] < 3)
             return currentBox
 
         currentBox := computeNewBox(currentBox, userInput)
@@ -337,26 +367,32 @@ ClickDouble()
 
 RememberClickedCell()
 {
-    global activeMonitor, BackAll, lastClick
+    global activeMonitor, activeWindow, BackAll, lastClick
     MouseGetPos(&x, &y)
-    lastClick := Map("monitor", activeMonitor, "x", x, "y", y,
+    lastClick := Map("monitor", activeMonitor, "window", activeWindow, "x", x, "y", y,
         "history", BackAll.Clone())
 }
 
 StartMonitorGrid(monitorNum)
 {
-    global activeMonitor, BackAll, depth, lastClick
+    return StartGrid(setupInitialBoxMonitor(monitorNum), monitorNum)
+}
+
+StartGrid(currentBox, monitorNum, windowId := 0)
+{
+    global activeMonitor, activeWindow, BackAll, depth, lastClick
     MouseGetPos(&x, &y)
     resetSharedState()
     activeMonitor := monitorNum
-    currentBox := setupInitialBoxMonitor(monitorNum)
+    activeWindow := windowId
     BackAll.Push(currentBox)
 
     if (IsObject(lastClick) && lastClick["monitor"] = monitorNum
+        && lastClick["window"] = windowId
         && lastClick["x"] = x && lastClick["y"] = y)
     {
         savedRoot := lastClick["history"][1]
-        ; Monitor layout changes invalidate saved cell coordinates.
+        ; Changed monitor or window bounds invalidate saved cell coordinates.
         if (savedRoot["sectorTopX"] = currentBox["sectorTopX"]
             && savedRoot["sectorTopY"] = currentBox["sectorTopY"]
             && savedRoot["sectorWidth"] = currentBox["sectorWidth"]
@@ -388,6 +424,12 @@ LoadConfigurationFile()
     
     global HOTKEY_SELECT_MONITOR := IniRead(iniFile, "Settings", "hotkey_select_monitor", "PgDn")
     global HOTKEY_CURRENT_MONITOR := IniRead(iniFile, "Settings", "hotkey_current_monitor", "PgUp")
+    global HOTKEY_CURRENT_WINDOW := IniRead(iniFile, "Settings", "hotkey_current_window", "")
+    if (HOTKEY_CURRENT_WINDOW = "")
+    {
+        HOTKEY_CURRENT_WINDOW := "CapsLock"
+        IniWrite(HOTKEY_CURRENT_WINDOW, iniFile, "Settings", "hotkey_current_window")
+    }
     
     ; Parse monitor layout from comma-separated string
     layoutStr := IniRead(iniFile, "Settings", "monitor_layout", "1,4,2,3")
@@ -404,13 +446,32 @@ LoadConfigurationFile()
 ; Setup dynamic hotkeys based on configuration
 SetupHotkeys()
 {
-    global HOTKEY_CURRENT_MONITOR, HOTKEY_SELECT_MONITOR
+    global HOTKEY_CURRENT_MONITOR, HOTKEY_SELECT_MONITOR, HOTKEY_CURRENT_WINDOW
     
     ; Hotkey for current monitor
     Hotkey(HOTKEY_CURRENT_MONITOR, ActivateCurrentMonitor)
     
     ; Hotkey for monitor selection
     Hotkey(HOTKEY_SELECT_MONITOR, ActivateMonitorSelection)
+    Hotkey(HOTKEY_CURRENT_WINDOW, ActivateCurrentWindow)
+}
+
+ActivateCurrentWindow(*)
+{
+    BlockInput true
+    try
+    {
+        windowId := WinExist("A")
+        if (!windowId || WinGetMinMax(windowId) = -1)
+            throw Error("There is no visible active window to draw a grid in.")
+        currentBox := setupInitialBoxWindow(windowId, &monitorNum)
+        currentBox := StartGrid(currentBox, monitorNum, windowId)
+        MainLoop(currentBox)
+    }
+    finally
+    {
+        BlockInput false
+    }
 }
 
 ActivateCurrentMonitor(*)

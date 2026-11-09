@@ -38,6 +38,7 @@ Edit `dnc.ini` to customize activation hotkeys:
 ```ini
 hotkey_select_monitor=PgDn    ; Show monitor selection menu
 hotkey_current_monitor=PgUp   ; Activate on current monitor
+hotkey_current_window=CapsLock ; Activate inside the active window
 ```
 
 Use AutoHotkey hotkey syntax:
@@ -88,12 +89,25 @@ Popular colors:
 |--------|--------|-------------------------|
 | **PgDn** (default) | Select monitor with A/S/D/F keys | `hotkey_select_monitor` |
 | **PgUp** (default) | Activate on current monitor | `hotkey_current_monitor` |
+| **CapsLock** (default) | Activate inside the active window | `hotkey_current_window` |
 
-After a left, right, or double click, either activation hotkey resumes the last
+The window hotkey includes the title bar and borders, clipping the grid to the
+monitor containing the largest portion of the active window. It does not cover
+the rest of the screen or subtract areas obscured by other windows. Navigation,
+clicks, **Space**, and **Escape** work as usual. CapsLock is consumed by this
+hotkey rather than toggling capitalization; configure another key to retain
+normal CapsLock use. Existing configuration files get the new setting on reload.
+
+After a left, right, or double click, a monitor activation hotkey resumes the last
 clicked cell when the target monitor is the same and the mouse is still at the
 exact click coordinates. The zoom level and navigation history are restored, so
 **Space** still zooms back out. If the mouse position, target monitor, or monitor
 bounds differ, activation starts with the full-monitor grid as usual.
+
+Window activation also resumes the last clicked cell when the same window,
+monitor, grid bounds, and exact mouse coordinates match. Moving or resizing the
+window starts fresh. Window grids and monitor grids do not resume each other,
+even when their bounds match.
 
 Only the most recent click is remembered, until the script exits or restarts.
 **Escape** cancels without replacing that saved click.
