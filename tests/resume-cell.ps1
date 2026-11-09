@@ -10,7 +10,8 @@ $functions = @(
     'ClickLeft', 'ClickRight', 'ClickDouble',
     'RememberClickedCell', 'StartMonitorGrid', 'StartGrid', 'setupInitialBoxWindow',
     'LoadConfigurationFile', 'SetupHotkeys', 'ActivateCurrentWindow',
-    'ActivateCurrentMonitor', 'ActivateMonitorSelection', 'GetMonitorActiveWindow'
+    'ActivateCurrentMonitor', 'ActivateMonitorSelection', 'ActivateGrid',
+    'GetMonitorActiveWindow'
 )
 $implementation = foreach ($name in $functions) {
     $match = [regex]::Match($source, "(?ms)^$name\([^\r\n]*\)\r?\n\{.*?^\}")
@@ -23,6 +24,8 @@ $implementation = foreach ($name in $functions) {
 # Run the production navigation functions with deterministic mouse/monitor/UI doubles.
 $harness = @'
 #Requires AutoHotkey v2.0
+#Warn All, StdOut
+#Warn LocalSameAsGlobal, Off
 depth := 0
 MAX_DEPTH := 3
 BackAll := []
@@ -42,6 +45,7 @@ windowHeight := 600
 windowId := 42
 windowState := 0
 inputBlocked := false
+gridSession := 0
 registeredHotkeys := Map()
 iniFile := A_ScriptFullPath ".ini"
 
@@ -281,20 +285,35 @@ WinGetMinMax(id)
     global windowState
     return windowState
 }
-BlockInput(block)
+BeginGridInput()
 {
     global inputBlocked
-    inputBlocked := block
+    inputBlocked := true
+    return Map()
+}
+EndGridInput(session)
+{
+    global inputBlocked
+    inputBlocked := false
 }
 MainLoop(box)
 {
+}
+ReadGridKey(session)
+{
+    return "Escape"
 }
 '@
 
 $tempScript = Join-Path ([System.IO.Path]::GetTempPath()) ("grid-resume-" + [guid]::NewGuid() + ".ahk")
 try {
     Set-Content $tempScript ($harness + "`r`n" + ($implementation -join "`r`n")) -Encoding UTF8
-    $process = Start-Process -FilePath $AutoHotkey -ArgumentList '/ErrorStdOut', "`"$tempScript`"" -Wait -PassThru -NoNewWindow
+    $process = Start-Process -FilePath $AutoHotkey -ArgumentList '/ErrorStdOut', "`"$tempScript`"" -PassThru -NoNewWindow
+    $null = $process.Handle
+    if (-not $process.WaitForExit(15000)) {
+        Stop-Process -Id $process.Id
+        throw 'Navigation regression tests timed out'
+    }
     if ($process.ExitCode -ne 0) {
         throw "AutoHotkey regression tests failed with exit code $($process.ExitCode)"
     }

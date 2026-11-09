@@ -124,6 +124,16 @@ X  C  V    ← Bottom row
 
 Press the key corresponding to the grid section you want. The grid zooms into that section and divides again.
 
+Keyboard capture stays active during activation, monitor selection, and grid
+redraws. Rapid navigation keys are queued and processed in order rather than
+passing through to the underlying application. Other keyboard input, including
+shortcuts, is suppressed while the grid is active. After a click or **Escape**,
+capture remains active until captured keys are released, preventing held-key
+repeats from leaking into the clicked application.
+
+The overlay reuses its windows across navigation steps and activations, and
+mouse movement has no animation or added delay.
+
 ### Actions
 
 | Key | Action |
@@ -150,6 +160,20 @@ Press the key corresponding to the grid section you want. The grid zooms into th
 - Use **Space** to undo if you select the wrong section
 - The grid automatically clears after clicking or pressing Escape
 - For multi-monitor setups, configure `MONITOR_LAYOUT` once and forget it
+
+## Regression Tests
+
+With AutoHotkey v2 installed, run from the project directory:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\resume-cell.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\rapid-input.ps1
+```
+
+The rapid-input test temporarily focuses its own text field and moves the mouse.
+It exercises the real keyboard hook and grid windows, including bursts during
+slow frames, command ordering, suppression, held-key exit, and window reuse.
+Mouse clicks are recorded rather than sent to applications.
 
 ## Version History
 

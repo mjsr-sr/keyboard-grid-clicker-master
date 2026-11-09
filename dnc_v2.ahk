@@ -9,7 +9,9 @@
 #SingleInstance Force
 InstallKeybdHook
 SetKeyDelay -1
-SetWinDelay 0
+SetWinDelay -1
+SetMouseDelay -1
+Thread "Interrupt", 0
 
 ; Set DPI awareness for accurate coordinates on high DPI displays
 DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
@@ -25,8 +27,8 @@ MAX_DEPTH := calculateMaxDepth(resBottom)
 
 depth := 0
 BackAll := []
-drawing := false
 gridGuis := []
+gridSession := 0
 activeMonitor := 0
 activeWindow := 0
 lastClick := 0
@@ -75,11 +77,9 @@ GetMonitorActiveWindow()
 
 resetSharedState()
 {
-    global depth, BackAll, gridGuis
+    global depth, BackAll
     depth := 0
     BackAll := []
-    if (gridGuis.Length > 0)
-        CleanUpGui()
 }
 
 setupInitialBox()
@@ -289,14 +289,7 @@ GoBack(history)
 
 DrawGrid(boxDefinition)
 {
-    global drawing, color, transparency
-    CleanUpGui()  ; Clear previous grid before drawing new one
-    
-    drawing := true
-    
-    bD := Map()
-    for key, value in boxDefinition
-        bD[key] := value
+    bD := boxDefinition
     
     drawRect(bD["sectorTopX"], bD["sectorTopY"], bD["sectorWidth"], 1, 1)
     drawRect(bD["sectorTopX"] + bD["sectorWidth"] - 1, bD["sectorTopY"], 1, bD["sectorHeight"], 2)
@@ -309,33 +302,32 @@ DrawGrid(boxDefinition)
     drawRect(bD["sectorTopX"] + Floor(bD["sectorWidth"] / 3), bD["sectorTopY"], 1, bD["sectorHeight"], 7)
     drawRect(bD["sectorTopX"] + Ceil(2 * (bD["sectorWidth"] / 3)), bD["sectorTopY"], 1, bD["sectorHeight"], 8)
     
-    drawing := false
+}
+
+PrepareGridGuis()
+{
+    global color, transparency, gridGuis
+    Loop 8
+    {
+        gridGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "Grid" . A_Index)
+        gridGui.BackColor := color
+        WinSetTransColor("000000 " . transparency, gridGui)
+        gridGuis.Push(gridGui)
+    }
 }
 
 drawRect(x, y, width, height, winNo)
 {
-    global color, transparency, gridGuis
-    gridGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "Grid" . winNo)
-    gridGui.BackColor := color
-    WinSetTransColor("000000 " . transparency, gridGui)
+    global gridGuis
+    gridGui := gridGuis[winNo]
     gridGui.Show("x" . x . " y" . y . " w" . width . " h" . height . " NoActivate")
-    gridGuis.Push(gridGui)
 }
 
 CleanUpGui()
 {
-    global drawing, BackAll, gridGuis
-    while drawing
-    {
-        Sleep 50
-    }
-    
+    global gridGuis
     for gui in gridGuis
-    {
-        try
-            gui.Destroy()
-    }
-    gridGuis := []
+        gui.Hide()
 }
 
 Quit()
@@ -458,86 +450,144 @@ SetupHotkeys()
 
 ActivateCurrentWindow(*)
 {
-    BlockInput true
-    try
-    {
-        windowId := WinExist("A")
-        if (!windowId || WinGetMinMax(windowId) = -1)
-            throw Error("There is no visible active window to draw a grid in.")
-        currentBox := setupInitialBoxWindow(windowId, &monitorNum)
-        currentBox := StartGrid(currentBox, monitorNum, windowId)
-        MainLoop(currentBox)
-    }
-    finally
-    {
-        BlockInput false
-    }
+    ActivateGrid("window")
 }
 
 ActivateCurrentMonitor(*)
 {
-    BlockInput true
-    currentMonitor := GetMonitorActiveWindow()
-    currentBox := StartMonitorGrid(currentMonitor)
-    MainLoop(currentBox)
-    BlockInput false
+    ActivateGrid("monitor")
 }
 
 ActivateMonitorSelection(*)
 {
-    BlockInput true
-    global MONITOR_LAYOUT
-    
-    ; Show selection prompt
-    ToolTip "Select Monitor (Left to Right):`nA = 1st | S = 2nd`nD = 3rd | F = 4th`nEsc = Cancel"
-    
-    ; Wait for monitor selection
-    ih := InputHook("L1", "{Escape}")
-    ih.Start()
-    ih.Wait()
-    
-    physicalPos := 0
-    
-    if (ih.Input = "a")
-        physicalPos := 1
-    else if (ih.Input = "s")
-        physicalPos := 2
-    else if (ih.Input = "d")
-        physicalPos := 3
-    else if (ih.Input = "f")
-        physicalPos := 4
-    
-    ToolTip  ; Clear tooltip
-    
-    if (physicalPos > 0 && physicalPos <= MONITOR_LAYOUT.Length)
-    {
-        monitorNum := MONITOR_LAYOUT[physicalPos]
-        currentBox := StartMonitorGrid(monitorNum)
-        MainLoop(currentBox)
-    }
-    
-    BlockInput false
+    ActivateGrid("selection")
 }
 
-; Initialize hotkeys
+ActivateGrid(target)
+{
+    global gridSession, MONITOR_LAYOUT
+    Critical
+    if IsObject(gridSession)
+    {
+        Critical "Off"
+        return
+    }
+
+    try
+        gridSession := BeginGridInput()
+    finally
+        Critical "Off"
+    try
+    {
+        if (target = "window")
+        {
+            windowId := WinExist("A")
+            if (!windowId || WinGetMinMax(windowId) = -1)
+                throw Error("There is no visible active window to draw a grid in.")
+            currentBox := setupInitialBoxWindow(windowId, &monitorNum)
+            currentBox := StartGrid(currentBox, monitorNum, windowId)
+        }
+        else
+        {
+            if (target = "selection")
+            {
+                ToolTip "Select Monitor (Left to Right):`nA = 1st | S = 2nd`nD = 3rd | F = 4th`nEsc = Cancel"
+                key := ReadGridKey(gridSession)
+                ToolTip
+                positions := Map("a", 1, "s", 2, "d", 3, "f", 4)
+                if (!positions.Has(key) || positions[key] > MONITOR_LAYOUT.Length)
+                    return
+                monitorNum := MONITOR_LAYOUT[positions[key]]
+            }
+            else
+                monitorNum := GetMonitorActiveWindow()
+            currentBox := StartMonitorGrid(monitorNum)
+        }
+        MainLoop(currentBox)
+    }
+    finally
+    {
+        try
+        {
+            ToolTip
+            CleanUpGui()
+        }
+        finally
+        {
+            try
+                EndGridInput(gridSession)
+            finally
+                gridSession := 0
+        }
+    }
+}
+
+BeginGridInput()
+{
+    ih := InputHook("L0")
+    session := Map("hook", ih, "queue", [], "next", 1, "held", Map(), "closing", false)
+    ih.KeyOpt("{All}", "NS")
+    ih.OnKeyDown := QueueGridKey.Bind(session)
+    ih.OnKeyUp := ReleaseGridKey.Bind(session)
+    ih.Start()
+    return session
+}
+
+QueueGridKey(session, ih, vk, sc)
+{
+    Critical
+    code := Format("vk{:X}sc{:X}", vk, sc)
+    session["held"][code] := true
+    if session["closing"]
+        return
+    key := GetKeyName(code)
+    if (StrLen(key) = 1)
+        key := StrLower(key)
+    session["queue"].Push(key)
+}
+
+ReleaseGridKey(session, ih, vk, sc)
+{
+    Critical
+    code := Format("vk{:X}sc{:X}", vk, sc)
+    if session["held"].Has(code)
+        session["held"].Delete(code)
+}
+
+ReadGridKey(session)
+{
+    while (session["next"] > session["queue"].Length)
+        Sleep 1
+    key := session["queue"][session["next"]]
+    session["next"] += 1
+    return key
+}
+
+EndGridInput(session)
+{
+    session["closing"] := true
+    ; Keep suppressing repeats and trailing burst keys until captured keys are released.
+    Loop
+    {
+        Sleep -1
+        if (session["held"].Count = 0)
+            break
+        Sleep 1
+    }
+    session["hook"].Stop()
+    session["hook"].OnKeyDown := ""
+    session["hook"].OnKeyUp := ""
+}
+
+PrepareGridGuis()
 SetupHotkeys()
 
 MainLoop(currentBox)
 {
+    global gridSession
     Loop
     {
-        ih := InputHook("L1", "{Escape}{Space}")
-        ih.Start()
-        ih.Wait()
-        
-        userInput := ih.Input
-        
-        if (ih.EndKey = "Space")
-            userInput := "Space"
-        
-        if (ih.EndKey = "Escape")
-            userInput := "Escape"
-        
+        userInput := ReadGridKey(gridSession)
         currentBox := main(currentBox, userInput)
         
         if (userInput ~= "^[jkl]$" || userInput = "Escape")
